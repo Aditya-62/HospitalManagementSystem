@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,10 +14,22 @@ builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen();
 
-// Database Connection
-builder.Services.AddDbContext<HospitalDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
+// Database Connection - PostgreSQL on Render, SQL Server locally
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+if (!string.IsNullOrEmpty(databaseUrl))
+{
+    // Render PostgreSQL
+    builder.Services.AddDbContext<HospitalDbContext>(options =>
+        options.UseNpgsql(databaseUrl));
+}
+else
+{
+    // Local SQL Server
+    builder.Services.AddDbContext<HospitalDbContext>(options =>
+        options.UseSqlServer(connectionString));
+}
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -71,5 +84,12 @@ app.UseCors("AllowAll");
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Auto-apply migrations on startup (for Render)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+    db.Database.Migrate();
+}
 
 app.Run();
